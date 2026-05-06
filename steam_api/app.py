@@ -2,49 +2,34 @@ from flask import Flask, jsonify
 import requests
 
 app = Flask(__name__)
-STEAM_ID = "76561199034196805"
+
+# ¡TU NUEVA WISHLIST MANUAL! 
+# Escribe aquí los nombres de los juegos que quieres vigilar.
+# Tip: No pongas más de 5 para que el servidor responda rápido.
+WISHLIST = ["Elden Ring", "Mewgenics", "Lies of P"]
 
 @app.route("/steam")
-def check_wishlist():
-    url = (f"https://store.steampowered.com/wishlist/profiles/"
-           f"{STEAM_ID}/wishlistdata/?p=0")
-    
-    # Camuflaje avanzado para engañar al firewall de Steam
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "Accept-Language": "es-MX,es;q=0.9,en;q=0.8",
-        "Referer": f"https://store.steampowered.com/wishlist/profiles/{STEAM_ID}/",
-        "X-Requested-With": "XMLHttpRequest",
-        "Connection": "keep-alive"
-    }
-    
+def check_cheapshark():
     try:
-        r = requests.get(url, headers=headers, timeout=10)
+        hay_ofertas = False
         
-        # Si Steam nos sigue bloqueando, esto lo imprimirá en los Logs de Render para analizarlo
-        if r.text.strip().startswith("<"):
-            print("STEAM BLOQUEÓ LA PETICIÓN. Respuesta:", r.text[:150])
-            return "perfil_privado_o_bloqueado", 403
+        for juego in WISHLIST:
+            # Consultamos la API de CheapShark (storeID=1 significa que solo busque en Steam)
+            url = f"https://www.cheapshark.com/api/1.0/deals?title={juego}&storeID=1&exact=0"
+            r = requests.get(url, timeout=10)
+            deals = r.json()
             
-        data = r.json()
-        
-        # Steam devuelve una lista vacía [] si no hay juegos, o un diccionario {} si hay. 
-        # Esta línea evita que el código crashee si la lista de deseados está vacía.
-        if isinstance(data, list):
-            return "0"
+            # Revisamos si el juego tiene algún descuento (savings > 0)
+            for deal in deals:
+                if float(deal.get("savings", 0)) > 0:
+                    hay_ofertas = True
+                    break # Encontramos una oferta, no necesitamos buscar más
             
-        ofertas = []
-        for app_id, info in data.items():
-            for sub in info.get("subs", []):
-                pct = sub.get("discount_pct", 0)
-                if pct > 0:
-                    ofertas.append({
-                        "name": info.get("name", app_id),
-                        "discount": pct
-                    })
-                    
-        return "1" if ofertas else "0"
+            if hay_ofertas:
+                break
+                
+        # Devolvemos 1 si hay ofertas, 0 si no hay
+        return "1" if hay_ofertas else "0"
         
     except Exception as e:
         return f"error:{e}", 500
